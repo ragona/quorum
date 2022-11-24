@@ -42,8 +42,7 @@ struct Generate {
     shares: u8,
 
     /// Path to write private share keys
-    #[arg(short, long)]
-    out: Option<String>,
+    out: String,
 }
 
 #[derive(Args)]
@@ -53,13 +52,12 @@ struct Encrypt {
     #[arg(short, long, default_value_t = 3)]
     threshold: u8,
 
-    /// Paths to share key files
-    #[arg(short, long, value_delimiter = ' ')]
-    shares: Vec<String>,
-
     /// Path to write ciphertext
     #[arg(short, long)]
     out: Option<String>,
+
+    /// Paths to share key files
+    shares: Vec<String>,
 }
 
 fn main() -> Result<()> {
@@ -92,11 +90,7 @@ fn generate(args: &Generate) -> Result<()> {
             contents: share.clone(),
         };
 
-        if let Some(out) = &args.out {
-            fs::write(format!("{}/share_{}.priv", out, i), encode(&pem))?;
-        } else {
-            println!("{}", encode(&pem));
-        }
+        fs::write(format!("{}/share_{}.priv", args.out, i), encode(&pem))?;
     }
 
     Ok(())
