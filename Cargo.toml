@@ -5,6 +5,12 @@ edition = "2021"
 description = """
 Simple cli for multi-party key generation and encryption
 """
+repository = "github.com/ragona/quorum"
+keywords = ["encryption", "shamir", "cryptography"]
+categories = ["command-line-utilities"]
+license = "MIT"
+readme = "README.md"
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

@@ -1,7 +1,13 @@
-use anyhow::Result;
+#![deny(clippy::all)]
+#![deny(clippy::pedantic)]
+#![deny(clippy::nursery)]
+#![deny(clippy::cargo)]
+#![allow(clippy::similar_names)]
+
+use anyhow::{bail, Result};
 use clap::{Args, Parser, Subcommand};
 use pem::{encode, parse, Pem};
-use ring::aead::*;
+use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, CHACHA20_POLY1305};
 use ring::rand::{self, SecureRandom as _};
 use sharks::{Share, Sharks};
 use std::io::BufRead;
@@ -68,9 +74,11 @@ fn main() -> Result<()> {
 fn generate(args: &Generate) -> Result<()> {
     let sharks = Sharks(args.threshold);
     let rng = rand::SystemRandom::new();
-    let mut secret = vec![0; 32];
+    let mut secret = [0; 32];
 
-    rng.fill(&mut secret).unwrap();
+    if let Err(err) = rng.fill(&mut secret) {
+        bail!("Failed to generate secret: {}", err);
+    }
 
     let shares: Vec<Vec<u8>> = sharks
         .dealer(&secret)
@@ -95,24 +103,12 @@ fn generate(args: &Generate) -> Result<()> {
 }
 
 fn encrypt(args: &Encrypt) -> Result<()> {
-    let mut shares: Vec<Share> = vec![];
-    let sharks = Sharks(args.threshold);
-
-    for path in &args.shares {
-        let file = fs::read(path)?;
-        let pem = parse(file)?;
-        let share =
-            Share::try_from(pem.contents.as_slice()).expect("Failed to convert PEM to Share");
-
-        shares.push(share);
-    }
-
-    let secret = sharks.recover(&shares).unwrap();
-
     let mut buf = vec![];
+    let secret = recover_secret(args.shares.clone(), args.threshold)?;
+
     io::stdin().lock().read_until(0x0, &mut buf)?;
 
-    encrypt_with_secret(&secret, &mut buf)?;
+    encrypt_buffer(&secret, &mut buf)?;
 
     let pem = Pem {
         tag: String::from("QUORUM CIPHERTEXT"),
@@ -128,18 +124,63 @@ fn encrypt(args: &Encrypt) -> Result<()> {
     Ok(())
 }
 
-fn encrypt_with_secret(secret: &Vec<u8>, buf: &mut Vec<u8>) -> Result<()> {
+fn recover_secret(share_paths: Vec<String>, threshold: u8) -> Result<[u8; 32]> {
+    let mut shares: Vec<Share> = vec![];
+    let sharks = Sharks(threshold);
+
+    for path in share_paths {
+        let file = fs::read(path)?;
+        let pem = parse(file)?;
+        let share = match Share::try_from(pem.contents.as_slice()) {
+            Ok(s) => s,
+            Err(e) => {
+                bail!(
+                    "Failed to convert provided PEM-encoded share to Share: {}",
+                    e
+                );
+            }
+        };
+
+        shares.push(share);
+    }
+
+    let secret: [u8; 32] = match sharks.recover(&shares) {
+        Ok(v) => match v.try_into() {
+            Ok(s) => s,
+            Err(_) => {
+                bail!("Failed to convert secret into 32-byte array");
+            }
+        },
+        Err(e) => {
+            bail!("Failed to recover secret: {}", e);
+        }
+    };
+
+    Ok(secret)
+}
+
+fn encrypt_buffer(secret: &[u8; 32], buf: &mut Vec<u8>) -> Result<()> {
     let aad = vec![];
-    let key = UnboundKey::new(&CHACHA20_POLY1305, &secret).unwrap();
-    let key = LessSafeKey::new(key); //We always use a random Nonce
-
-    let rng = rand::SystemRandom::new();
     let mut nonce_bytes = [0u8; 12];
-    rng.fill(&mut nonce_bytes).unwrap();
-    let nonce = Nonce::assume_unique_for_key(nonce_bytes);
+    let rng = rand::SystemRandom::new();
+    let key = match UnboundKey::new(&CHACHA20_POLY1305, secret) {
+        Ok(k) => LessSafeKey::new(k),
+        Err(e) => {
+            bail!("Failed to create key: {}", e)
+        }
+    };
 
-    key.seal_in_place_append_tag(nonce, Aad::from(aad), buf)
-        .unwrap();
+    if let Err(e) = rng.fill(&mut nonce_bytes) {
+        bail!("Failed to generate nonce: {}", e)
+    }
+
+    if let Err(e) = key.seal_in_place_append_tag(
+        Nonce::assume_unique_for_key(nonce_bytes),
+        Aad::from(aad),
+        buf,
+    ) {
+        bail!("Failed to decrypt ciphertext: {}", e);
+    }
 
     Ok(())
 }
