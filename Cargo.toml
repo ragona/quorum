@@ -1,0 +1,17 @@
+[package]
+name = "quorum"
+version = "0.1.0"
+edition = "2021"
+description = """
+Simple cli for multi-party key generation and encryption
+"""
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.66"
+base64 = "0.13.1"
+clap = {version = "4.0.24", features=["derive"]}
+pem = "1.1.0"
+ring = "0.16.20"
+sharks = "0.4"
