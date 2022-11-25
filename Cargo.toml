@@ -11,9 +11,6 @@ categories = ["command-line-utilities"]
 license = "MIT"
 readme = "README.md"
 
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 anyhow = "1.0.66"
 base64 = "0.13.1"
@@ -21,3 +18,8 @@ clap = {version = "4.0.24", features=["derive"]}
 pem = "1.1.0"
 ring = "0.16.20"
 sharks = "0.4"
+
+[dev-dependencies]
+assert_cmd = "2.0.6"
+assert_fs = "1.0.9"
+predicates = "2.1.3"
