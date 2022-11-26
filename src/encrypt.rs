@@ -1,8 +1,8 @@
-use anyhow::{bail, Result};
+use anyhow::{anyhow, Result};
 use ecies;
 use ecies::decrypt as ec_decrypt;
 use ecies::encrypt as ec_encrypt;
-use pem::{encode, parse, Pem};
+use pem::{encode, Pem};
 use std::fs::File;
 use std::io::BufRead;
 use std::io::Read;
@@ -13,7 +13,7 @@ use crate::{recover_secret, Decrypt, Encrypt};
 pub fn encrypt(args: &Encrypt) -> Result<()> {
     let mut plaintext = vec![];
     let pk_pem = fs::read(&args.pub_key)?;
-    let pk_pem = parse(pk_pem)?;
+    let pk_pem = pem::parse(pk_pem)?;
 
     if let Some(path) = &args.file_in {
         File::open(path)?.read_to_end(&mut plaintext)?;
@@ -47,13 +47,7 @@ pub(crate) fn decrypt(args: &Decrypt) -> Result<()> {
         io::stdin().lock().read_until(0x0, &mut ciphertext)?;
     }
 
-    let pem = match parse(&ciphertext) {
-        Ok(p) => p,
-        Err(e) => {
-            bail!("Failed to parse PEM: {}", e);
-        }
-    };
-
+    let pem = pem::parse(&ciphertext).map_err(|e| anyhow!("Failed to parse PEM: {:?}", e))?;
     let plaintext = ec_decrypt(&secret, &pem.contents)?;
 
     if let Some(path) = &args.out {
