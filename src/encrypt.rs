@@ -1,7 +1,8 @@
 use anyhow::{bail, Result};
+use ecies;
+use ecies::decrypt as ec_decrypt;
+use ecies::encrypt as ec_encrypt;
 use pem::{encode, parse, Pem};
-use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, CHACHA20_POLY1305};
-use ring::rand::{self, SecureRandom as _};
 use std::fs::File;
 use std::io::BufRead;
 use std::io::Read;
@@ -9,23 +10,28 @@ use std::{fs, io, str};
 
 use crate::{recover_secret, Decrypt, Encrypt};
 
-pub(crate) fn encrypt(args: &Encrypt) -> Result<()> {
-    let mut buf = vec![];
-    let secret = recover_secret(args.shares.clone(), args.threshold)?;
+pub fn encrypt(args: &Encrypt) -> Result<()> {
+    let mut plaintext = vec![];
+    let pk_pem = fs::read(&args.pub_key)?;
+    let pk_pem = parse(pk_pem)?;
 
-    io::stdin().lock().read_until(0x0, &mut buf)?;
+    if let Some(path) = &args.file_in {
+        File::open(path)?.read_to_end(&mut plaintext)?;
+    } else {
+        io::stdin().lock().read_until(0x0, &mut plaintext)?;
+    }
 
-    encrypt_buffer(&secret, &mut buf)?;
+    let ciphertext = ec_encrypt(&pk_pem.contents, &plaintext).unwrap();
 
     let pem = Pem {
         tag: String::from("QUORUM CIPHERTEXT"),
-        contents: buf,
+        contents: ciphertext,
     };
 
     if let Some(path) = &args.out {
         fs::write(path, encode(&pem))?;
     } else {
-        println!("{}", encode(&pem));
+        print!("{}", encode(&pem));
     }
 
     Ok(())
@@ -33,82 +39,28 @@ pub(crate) fn encrypt(args: &Encrypt) -> Result<()> {
 
 pub(crate) fn decrypt(args: &Decrypt) -> Result<()> {
     let secret = recover_secret(args.shares.clone(), args.threshold)?;
-    let mut buf = vec![];
+    let mut ciphertext = vec![];
 
     if let Some(path) = &args.file_in {
-        File::open(path)?.read_to_end(&mut buf)?;
+        File::open(path)?.read_to_end(&mut ciphertext)?;
     } else {
-        io::stdin().lock().read_until(0x0, &mut buf)?;
+        io::stdin().lock().read_until(0x0, &mut ciphertext)?;
     }
 
-    let mut pem = match parse(&buf) {
+    let pem = match parse(&ciphertext) {
         Ok(p) => p,
         Err(e) => {
             bail!("Failed to parse PEM: {}", e);
         }
     };
 
-    decrypt_buffer(&secret, &mut pem.contents)?;
+    let plaintext = ec_decrypt(&secret, &pem.contents)?;
 
     if let Some(path) = &args.out {
-        fs::write(path, pem.contents)?;
+        fs::write(path, &plaintext)?;
     } else {
-        print!("{}", str::from_utf8(&pem.contents)?);
+        print!("{}", str::from_utf8(&plaintext)?);
     }
-
-    Ok(())
-}
-
-fn encrypt_buffer(secret: &[u8; 32], buf: &mut Vec<u8>) -> Result<()> {
-    let aad = vec![];
-    let mut nonce_bytes = [0u8; 12];
-    let rng = rand::SystemRandom::new();
-    let key = match UnboundKey::new(&CHACHA20_POLY1305, secret) {
-        Ok(k) => LessSafeKey::new(k),
-        Err(e) => {
-            bail!("Failed to create key: {}", e)
-        }
-    };
-
-    if let Err(e) = rng.fill(&mut nonce_bytes) {
-        bail!("Failed to generate nonce: {}", e)
-    }
-
-    if let Err(e) = key.seal_in_place_append_tag(
-        Nonce::assume_unique_for_key(nonce_bytes),
-        Aad::from(aad),
-        buf,
-    ) {
-        bail!("Failed to decrypt ciphertext: {}", e);
-    }
-
-    buf.append(&mut nonce_bytes.to_vec());
-
-    Ok(())
-}
-
-fn decrypt_buffer(secret: &[u8; 32], buf: &mut Vec<u8>) -> Result<()> {
-    let aad = vec![];
-    let mut nonce_bytes = [0u8; 12];
-    let key = match UnboundKey::new(&CHACHA20_POLY1305, secret) {
-        Ok(k) => LessSafeKey::new(k),
-        Err(e) => {
-            bail!("Failed to create key: {}", e)
-        }
-    };
-
-    nonce_bytes.copy_from_slice(&buf[buf.len() - CHACHA20_POLY1305.nonce_len()..]);
-    buf.truncate(buf.len() - CHACHA20_POLY1305.nonce_len());
-
-    if let Err(e) = key.open_in_place(
-        Nonce::assume_unique_for_key(nonce_bytes),
-        Aad::from(aad),
-        buf,
-    ) {
-        bail!("Failed to decrypt ciphertext: {}", e);
-    }
-
-    buf.truncate(buf.len() - CHACHA20_POLY1305.tag_len());
 
     Ok(())
 }

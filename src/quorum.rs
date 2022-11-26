@@ -1,25 +1,21 @@
-use anyhow::{bail, Result};
-use pem::{encode, parse, Pem};
-use ring::rand::{self, SecureRandom};
-use sharks::{Share, Sharks};
-use std::fs;
-
 use crate::Generate;
+use anyhow::{bail, Result};
+use ecies::utils::generate_keypair;
+use pem::{encode, parse, Pem};
+use sharks::{Share, Sharks};
+use std::{fs, path::Path};
 
 pub(crate) fn generate(args: &Generate) -> Result<()> {
     let sharks = Sharks(args.threshold);
-    let rng = rand::SystemRandom::new();
-    let mut secret = [0; 32];
-
-    if let Err(err) = rng.fill(&mut secret) {
-        bail!("Failed to generate secret: {}", err);
-    }
+    let (sk, pk) = generate_keypair();
 
     let shares: Vec<Vec<u8>> = sharks
-        .dealer(&secret)
+        .dealer(&sk.serialize())
         .take(args.shares as usize)
         .map(|s| Vec::from(&s))
         .collect();
+
+    let out_path = Path::new(&args.out);
 
     for (i, share) in shares.iter().enumerate() {
         let pem = Pem {
@@ -27,8 +23,18 @@ pub(crate) fn generate(args: &Generate) -> Result<()> {
             contents: share.clone(),
         };
 
-        fs::write(format!("{}/share_{}.priv", args.out, i), encode(&pem))?;
+        fs::write(
+            out_path.join(format!("quorum_share_{}.priv", i)),
+            encode(&pem),
+        )?;
     }
+
+    let pem = Pem {
+        tag: String::from("QUORUM PUBKEY"),
+        contents: Vec::from(pk.serialize()),
+    };
+
+    fs::write(out_path.join("quorum.pub"), encode(&pem))?;
 
     Ok(())
 }

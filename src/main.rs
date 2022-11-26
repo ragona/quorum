@@ -36,7 +36,7 @@ enum Commands {
 
 #[derive(Args)]
 /// Generate a new set of quorum keys
-struct Generate {
+pub struct Generate {
     /// Number of shares required to reconstruct the secret
     #[arg(short, long, default_value_t = 3)]
     threshold: u8,
@@ -51,7 +51,7 @@ struct Generate {
 
 #[derive(Args)]
 /// Encrypt using key shares
-struct Encrypt {
+pub struct Encrypt {
     /// Number of shares required to reconstruct the secret
     #[arg(short, long, default_value_t = 3)]
     threshold: u8,
@@ -60,13 +60,17 @@ struct Encrypt {
     #[arg(short, long)]
     out: Option<String>,
 
-    /// Paths to share key files
-    shares: Vec<String>,
+    /// Path to read ciphertext file
+    #[arg(short = 'i', long = "in")]
+    file_in: Option<String>,
+
+    /// Path to quorum public key
+    pub_key: String,
 }
 
 #[derive(Args)]
 /// Decrypt using key shares
-struct Decrypt {
+pub struct Decrypt {
     /// Number of shares required to reconstruct the secret
     #[arg(short, long, default_value_t = 3)]
     threshold: u8,

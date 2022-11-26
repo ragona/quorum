@@ -10,7 +10,7 @@ fn runs_at_all() -> Result<()> {
     let mut cmd = Command::cargo_bin("quorum")?;
 
     cmd.assert().code(2);
-    cmd.assert().stderr(predicates::str::contains(
+    cmd.assert().stderr(predicate::str::contains(
         "-h, --help     Print help information",
     ));
 
@@ -31,8 +31,10 @@ fn generate() -> Result<()> {
         .assert()
         .success();
 
+    tmp.child("quorum.pub").assert(exists());
+
     for i in 0..3 {
-        let filename = format!("share_{}.priv", i);
+        let filename = format!("quorum_share_{}.priv", i);
         let path = tmp.child(filename);
 
         path.assert(exists());
@@ -61,6 +63,7 @@ fn encrypt_decrypt() -> Result<()> {
         .success();
 
     let mut cmd = Command::cargo_bin("quorum")?;
+    let pub_key = tmp.child("quorum.pub");
     let message = b"attack at dawn".to_vec();
 
     cmd.arg("encrypt")
@@ -68,8 +71,7 @@ fn encrypt_decrypt() -> Result<()> {
         .arg("2")
         .arg("--out")
         .arg(tmp.join("ciphertext"))
-        .arg(tmp.child("share_0.priv").as_os_str())
-        .arg(tmp.child("share_1.priv").as_os_str())
+        .arg(pub_key.as_os_str())
         .write_stdin(message.clone())
         .assert()
         .success();
@@ -89,8 +91,8 @@ fn encrypt_decrypt() -> Result<()> {
         .arg("2")
         .arg("--in")
         .arg(ciphertext_path.as_os_str())
-        .arg(tmp.child("share_0.priv").as_os_str())
-        .arg(tmp.child("share_1.priv").as_os_str())
+        .arg(tmp.child("quorum_share_0.priv").as_os_str())
+        .arg(tmp.child("quorum_share_1.priv").as_os_str())
         .assert()
         .stdout(predicate::eq(message.as_slice() as &[u8]));
 
