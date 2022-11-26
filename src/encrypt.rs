@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use ecies;
+
 use ecies::decrypt as ec_decrypt;
 use ecies::encrypt as ec_encrypt;
 use pem::{encode, Pem};
@@ -37,7 +37,7 @@ pub fn encrypt(args: &Encrypt) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn decrypt(args: &Decrypt) -> Result<()> {
+pub fn decrypt(args: &Decrypt) -> Result<()> {
     let secret = recover_secret(args.shares.clone(), args.threshold)?;
     let mut ciphertext = vec![];
 

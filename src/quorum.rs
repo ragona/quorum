@@ -9,7 +9,7 @@ use std::{fs, path::Path};
 
 const QUORUM_ID_SIZE: usize = 32;
 
-pub(crate) fn generate(args: &Generate) -> Result<()> {
+pub fn generate(args: &Generate) -> Result<()> {
     let sharks = Sharks(args.threshold);
     let mut quorum_id = vec![0u8; QUORUM_ID_SIZE];
 
@@ -49,7 +49,7 @@ pub(crate) fn generate(args: &Generate) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn recover_secret(share_paths: Vec<String>, threshold: u8) -> Result<[u8; 32]> {
+pub fn recover_secret(share_paths: Vec<String>, threshold: u8) -> Result<[u8; 32]> {
     let mut shares = Vec::with_capacity(share_paths.len());
     let sharks = Sharks(threshold);
     let mut quorum_id = [0u8; QUORUM_ID_SIZE];
