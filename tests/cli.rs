@@ -98,3 +98,58 @@ fn encrypt_decrypt() -> Result<()> {
 
     Ok(())
 }
+#[test]
+fn mismatched_shares_fails() -> Result<()> {
+    let mut cmd = Command::cargo_bin("quorum")?;
+    let tmp_a = assert_fs::TempDir::new()?;
+
+    cmd.arg("generate")
+        .arg("--threshold")
+        .arg("2")
+        .arg("--shares")
+        .arg("3")
+        .arg(tmp_a.as_os_str())
+        .assert()
+        .success();
+
+    let mut cmd = Command::cargo_bin("quorum")?;
+    let tmp_b = assert_fs::TempDir::new()?;
+
+    cmd.arg("generate")
+        .arg("--threshold")
+        .arg("2")
+        .arg("--shares")
+        .arg("3")
+        .arg(tmp_b.as_os_str())
+        .assert()
+        .success();
+
+    let mut cmd = Command::cargo_bin("quorum")?;
+    let pub_key = tmp_a.child("quorum.pub");
+    let message = b"attack at dawn".to_vec();
+
+    cmd.arg("encrypt")
+        .arg("--threshold")
+        .arg("2")
+        .arg("--out")
+        .arg(tmp_a.join("ciphertext"))
+        .arg(pub_key.as_os_str())
+        .write_stdin(message.clone())
+        .assert()
+        .success();
+
+    let ciphertext_path = tmp_a.child("ciphertext");
+    let mut cmd = Command::cargo_bin("quorum")?;
+
+    cmd.arg("decrypt")
+        .arg("--threshold")
+        .arg("2")
+        .arg("--in")
+        .arg(ciphertext_path.as_os_str())
+        .arg(tmp_a.child("quorum_share_0.priv").as_os_str())
+        .arg(tmp_b.child("quorum_share_1.priv").as_os_str())
+        .assert()
+        .failure();
+
+    Ok(())
+}

@@ -1,6 +1,6 @@
 [package]
 name = "quorum"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 description = """
 Simple cli for multi-party key generation and encryption
@@ -17,6 +17,7 @@ base64 = "0.13.1"
 clap = {version = "4.0.24", features=["derive"]}
 ecies = { version = "0.2.3", default-features=false, features = ["pure"] }
 pem = "1.1.0"
+rand = {version = "0.8.5", features=["getrandom"]}
 sharks = "0.4"
 
 [dev-dependencies]
