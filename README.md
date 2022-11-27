@@ -8,6 +8,9 @@ You should use it in a highly monitored key ceremony,
 and then distribute the key shares to trusted parties.
 After the ceremony, ensure that no one party has a full quorum of shares.
 
+![GitHub Workflow Status](https://img.shields.io/github/workflow/status/ragona/quorum/Rust)
+[![Coverage Status](https://coveralls.io/repos/github/ragona/quorum/badge.svg?branch=main)](https://coveralls.io/github/ragona/quorum?branch=main)
+
 ```
 Usage: quorum <COMMAND>
 
