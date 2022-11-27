@@ -23,8 +23,17 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
     
-    - name: Coverage
-      run: make cov
+    - name: Install stable toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Run cargo-tarpaulin
+      uses: actions-rs/tarpaulin@v0.1
+      with:
+        version: '0.15.0'
+        args: '-- --test-threads 1'
       
     - name: Coveralls
       uses: coverallsapp/github-action@1.1.3
