@@ -1,5 +1,5 @@
 use crate::Generate;
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use ecies::utils::generate_keypair;
 use pem::{encode, parse, Pem};
 use rand::rngs::OsRng;
@@ -9,7 +9,7 @@ use std::{fs, path::Path};
 
 const QUORUM_ID_SIZE: usize = 32;
 
-pub(crate) fn generate(args: &Generate) -> Result<()> {
+pub fn generate(args: &Generate) -> Result<()> {
     let sharks = Sharks(args.threshold);
     let mut quorum_id = vec![0u8; QUORUM_ID_SIZE];
 
@@ -49,8 +49,8 @@ pub(crate) fn generate(args: &Generate) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn recover_secret(share_paths: Vec<String>, threshold: u8) -> Result<[u8; 32]> {
-    let mut shares: Vec<Share> = vec![];
+pub fn recover_secret(share_paths: Vec<String>, threshold: u8) -> Result<[u8; 32]> {
+    let mut shares = Vec::with_capacity(share_paths.len());
     let sharks = Sharks(threshold);
     let mut quorum_id = [0u8; QUORUM_ID_SIZE];
 
@@ -76,30 +76,17 @@ pub(crate) fn recover_secret(share_paths: Vec<String>, threshold: u8) -> Result<
 
         pem.contents.truncate(pem.contents.len() - QUORUM_ID_SIZE);
 
-        let share = match Share::try_from(pem.contents.as_slice()) {
-            Ok(s) => s,
-            Err(e) => {
-                bail!(
-                    "Failed to convert provided PEM-encoded share to Share: {}",
-                    e
-                );
-            }
-        };
+        let share = Share::try_from(pem.contents.as_slice())
+            .map_err(|e| anyhow!("Failed to convert PEM-encoded share to Share: {:?}", e))?;
 
         shares.push(share);
     }
 
-    let secret: [u8; 32] = match sharks.recover(&shares) {
-        Ok(v) => match v.try_into() {
-            Ok(s) => s,
-            Err(_) => {
-                bail!("Failed to convert secret into 32-byte array");
-            }
-        },
-        Err(e) => {
-            bail!("Failed to recover secret: {}", e);
-        }
-    };
+    let secret: [u8; 32] = sharks
+        .recover(&shares)
+        .map_err(|e| anyhow!("Failed to recover secret: {:?}", e))?
+        .try_into()
+        .map_err(|e| anyhow!("Failed to convert secret into 32-byte array: {:?}", e))?;
 
     Ok(secret)
 }

@@ -134,7 +134,7 @@ fn mismatched_shares_fails() -> Result<()> {
         .arg("--out")
         .arg(tmp_a.join("ciphertext"))
         .arg(pub_key.as_os_str())
-        .write_stdin(message.clone())
+        .write_stdin(message)
         .assert()
         .success();
 
