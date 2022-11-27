@@ -46,16 +46,12 @@ pub struct Generate {
     shares: u8,
 
     /// Path to write private share keys
-    out: String,
+    out: Option<String>,
 }
 
 #[derive(Args)]
 /// Encrypt using key shares
 pub struct Encrypt {
-    /// Number of shares required to reconstruct the secret
-    #[arg(short, long, default_value_t = 3)]
-    threshold: u8,
-
     /// Path to write ciphertext
     #[arg(short, long)]
     out: Option<String>,

@@ -10,6 +10,14 @@ use std::{fs, path::Path};
 const QUORUM_ID_SIZE: usize = 32;
 
 pub fn generate(args: &Generate) -> Result<()> {
+    if args.shares == 0 {
+        bail!("Must generate at least one share");
+    }
+
+    if args.threshold > args.shares {
+        bail!("Number of shares must be greater than or equal to threshold");
+    }
+
     let sharks = Sharks(args.threshold);
     let mut quorum_id = vec![0u8; QUORUM_ID_SIZE];
 
@@ -22,8 +30,6 @@ pub fn generate(args: &Generate) -> Result<()> {
         .map(|s| Vec::from(&s))
         .collect();
 
-    let out_path = Path::new(&args.out);
-
     for (i, share) in shares.iter().enumerate() {
         let mut share_with_id = share.clone();
         share_with_id.append(&mut quorum_id.clone());
@@ -33,10 +39,16 @@ pub fn generate(args: &Generate) -> Result<()> {
             contents: share_with_id,
         };
 
-        fs::write(
-            out_path.join(format!("quorum_share_{}.priv", i)),
-            encode(&sk_pem),
-        )?;
+        let encoded_pem = encode(&sk_pem);
+
+        if let Some(path) = &args.out {
+            fs::write(
+                Path::new(&path).join(format!("quorum_share_{}.priv", i)),
+                encoded_pem,
+            )?;
+        } else {
+            print!("{}", encoded_pem);
+        }
     }
 
     let pk_pem = Pem {
@@ -44,24 +56,41 @@ pub fn generate(args: &Generate) -> Result<()> {
         contents: Vec::from(pk.serialize()),
     };
 
-    fs::write(out_path.join("quorum.pub"), encode(&pk_pem))?;
+    let encoded_pem = encode(&pk_pem);
+
+    if let Some(path) = &args.out {
+        fs::write(Path::new(&path).join("quorum.pub"), encoded_pem)?;
+    } else {
+        print!("{}", encoded_pem);
+    }
 
     Ok(())
 }
 
 pub fn recover_secret(share_paths: Vec<String>, threshold: u8) -> Result<[u8; 32]> {
+    if share_paths.is_empty() {
+        bail!("You must provide at least one share");
+    }
+
+    if share_paths.len() < threshold as usize {
+        bail!("Not enough private shares provided for threshold");
+    }
+
+    if share_paths.len() > 255 {
+        bail!("Too many shares provided; max of 255");
+    }
+
     let mut shares = Vec::with_capacity(share_paths.len());
     let sharks = Sharks(threshold);
-    let mut quorum_id = [0u8; QUORUM_ID_SIZE];
 
     // Extract the quorum ID from the first provided share.
     // All shares must have this same ID to prevent accidentally
     // combining shares that do not match.
-    if let Some(path) = share_paths.first() {
-        let file = fs::read(path)?;
-        let pem = parse(file)?;
-        quorum_id.copy_from_slice(&pem.contents[pem.contents.len() - QUORUM_ID_SIZE..]);
-    }
+    let mut quorum_id = [0u8; QUORUM_ID_SIZE];
+    let first_path = share_paths.first().unwrap();
+    let file = fs::read(first_path)?;
+    let pem = parse(file)?;
+    quorum_id.copy_from_slice(&pem.contents[pem.contents.len() - QUORUM_ID_SIZE..]);
 
     for path in share_paths {
         let file = fs::read(path)?;

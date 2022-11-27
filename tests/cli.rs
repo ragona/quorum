@@ -67,8 +67,6 @@ fn encrypt_decrypt() -> Result<()> {
     let message = b"attack at dawn".to_vec();
 
     cmd.arg("encrypt")
-        .arg("--threshold")
-        .arg("2")
         .arg("--out")
         .arg(tmp.join("ciphertext"))
         .arg(pub_key.as_os_str())
@@ -129,8 +127,6 @@ fn mismatched_shares_fails() -> Result<()> {
     let message = b"attack at dawn".to_vec();
 
     cmd.arg("encrypt")
-        .arg("--threshold")
-        .arg("2")
         .arg("--out")
         .arg(tmp_a.join("ciphertext"))
         .arg(pub_key.as_os_str())
