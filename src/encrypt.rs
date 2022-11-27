@@ -48,7 +48,8 @@ pub fn decrypt(args: &Decrypt) -> Result<()> {
     }
 
     let pem = pem::parse(&ciphertext).map_err(|e| anyhow!("Failed to parse PEM: {:?}", e))?;
-    let plaintext = ec_decrypt(&secret, &pem.contents)?;
+    let plaintext = ec_decrypt(&secret, &pem.contents)
+        .map_err(|e| anyhow!("Failed to decrypt message: {:?}", e))?;
 
     if let Some(path) = &args.out {
         fs::write(path, &plaintext)?;
