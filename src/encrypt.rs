@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Context, Result};
 
 use ecies::decrypt as ec_decrypt;
 use ecies::encrypt as ec_encrypt;
@@ -6,22 +6,30 @@ use pem::{encode, Pem};
 use std::fs::File;
 use std::io::BufRead;
 use std::io::Read;
-use std::{fs, io, str};
+use std::io::Write;
+use std::{fs, io};
 
 use crate::{recover_secret, Decrypt, Encrypt};
 
 pub fn encrypt(args: &Encrypt) -> Result<()> {
     let mut plaintext = vec![];
-    let pk_pem = fs::read(&args.pub_key)?;
-    let pk_pem = pem::parse(pk_pem)?;
+    let pem_file = fs::read(&args.pub_key).context("Failed to load pubkey")?;
+    let pk_pem = pem::parse(pem_file).context("Failed to parse pubkey PEM format")?;
 
     if let Some(path) = &args.file_in {
-        File::open(path)?.read_to_end(&mut plaintext)?;
+        File::open(path)
+            .with_context(|| format!("Failed to open plaintext: {}", path))?
+            .read_to_end(&mut plaintext)
+            .with_context(|| format!("Failed to load plaintext: {}", path))?;
     } else {
-        io::stdin().lock().read_until(0x0, &mut plaintext)?;
+        io::stdin()
+            .lock()
+            .read_to_end(&mut plaintext)
+            .context("Failed to read from stdin")?;
     }
 
-    let ciphertext = ec_encrypt(&pk_pem.contents, &plaintext).unwrap();
+    let ciphertext =
+        ec_encrypt(&pk_pem.contents, &plaintext).context("Failed to encrypt ciphertext")?;
 
     let pem = Pem {
         tag: String::from("QUORUM CIPHERTEXT"),
@@ -29,7 +37,8 @@ pub fn encrypt(args: &Encrypt) -> Result<()> {
     };
 
     if let Some(path) = &args.out {
-        fs::write(path, encode(&pem))?;
+        fs::write(path, encode(&pem))
+            .with_context(|| format!("Failed to write ciphertext to: {}", path))?;
     } else {
         print!("{}", encode(&pem));
     }
@@ -38,8 +47,9 @@ pub fn encrypt(args: &Encrypt) -> Result<()> {
 }
 
 pub fn decrypt(args: &Decrypt) -> Result<()> {
-    let secret = recover_secret(args.shares.clone(), args.threshold)?;
     let mut ciphertext = vec![];
+    let secret =
+        recover_secret(&args.shares, args.threshold).context("Failed to recover secret")?;
 
     if let Some(path) = &args.file_in {
         File::open(path)?.read_to_end(&mut ciphertext)?;
@@ -47,14 +57,17 @@ pub fn decrypt(args: &Decrypt) -> Result<()> {
         io::stdin().lock().read_until(0x0, &mut ciphertext)?;
     }
 
-    let pem = pem::parse(&ciphertext).map_err(|e| anyhow!("Failed to parse PEM: {:?}", e))?;
-    let plaintext = ec_decrypt(&secret, &pem.contents)
-        .map_err(|e| anyhow!("Failed to decrypt message: {:?}", e))?;
+    let pem = pem::parse(&ciphertext).context("Failed to parse ciphertext PEM")?;
+    let plaintext = ec_decrypt(&secret, &pem.contents).context("Failed to decrypt message")?;
 
     if let Some(path) = &args.out {
-        fs::write(path, &plaintext)?;
+        fs::write(path, &plaintext)
+            .with_context(|| format!("Failed to write plaintext to {}", path))?;
     } else {
-        print!("{}", str::from_utf8(&plaintext)?);
+        io::stdout()
+            .lock()
+            .write_all(&plaintext)
+            .context("Failed to write plaintext to stdout")?;
     }
 
     Ok(())
