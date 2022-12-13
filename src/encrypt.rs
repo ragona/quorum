@@ -1,26 +1,29 @@
-use anyhow::{Context, Result};
-
-use ecies::decrypt as ec_decrypt;
-use ecies::encrypt as ec_encrypt;
-use pem::{encode, Pem};
+use std::fs;
 use std::fs::File;
-use std::io::BufRead;
-use std::io::Read;
-use std::io::Write;
-use std::{fs, io};
+use std::io::{self, BufRead, Read, Write};
+use std::num::NonZeroU8;
+use std::path::Path;
 
-use crate::{recover_secret, Decrypt, Encrypt};
+use anyhow::{Context, Result};
+use pem::Pem;
+use zeroize::{Zeroize, Zeroizing};
 
-pub fn encrypt(args: &Encrypt) -> Result<()> {
-    let mut plaintext = vec![];
-    let pem_file = fs::read(&args.pub_key).context("Failed to load pubkey")?;
+use crate::generate::recover_secret_from_paths;
+use crate::utils;
+
+pub fn encrypt<P>(inpath: Option<&Path>, outpath: Option<&Path>, pk: P) -> Result<()>
+where
+    P: AsRef<Path>,
+{
+    let mut plaintext = Zeroizing::new(vec![]);
+    let pem_file = fs::read(pk).context("Failed to load pubkey")?;
     let pk_pem = pem::parse(pem_file).context("Failed to parse pubkey PEM format")?;
 
-    if let Some(path) = &args.file_in {
+    if let Some(path) = inpath {
         File::open(path)
-            .with_context(|| format!("Failed to open plaintext: {}", path))?
+            .with_context(|| format!("Failed to open plaintext: {}", path.display()))?
             .read_to_end(&mut plaintext)
-            .with_context(|| format!("Failed to load plaintext: {}", path))?;
+            .with_context(|| format!("Failed to load plaintext: {}", path.display()))?;
     } else {
         io::stdin()
             .lock()
@@ -29,40 +32,58 @@ pub fn encrypt(args: &Encrypt) -> Result<()> {
     }
 
     let ciphertext =
-        ec_encrypt(&pk_pem.contents, &plaintext).context("Failed to encrypt ciphertext")?;
+        ecies::encrypt(&pk_pem.contents, &plaintext).context("Failed to encrypt ciphertext")?;
 
-    let pem = Pem {
+    let mut pem = Pem {
         tag: String::from("QUORUM CIPHERTEXT"),
         contents: ciphertext,
     };
 
-    if let Some(path) = &args.out {
-        fs::write(path, encode(&pem))
-            .with_context(|| format!("Failed to write ciphertext to: {}", path))?;
+    let encoded_pem = Zeroizing::new(pem::encode_config(&pem, utils::ENCODE_CONFIG));
+
+    pem.tag.zeroize();
+    pem.contents.zeroize();
+
+    if let Some(path) = outpath {
+        fs::write(path, encoded_pem)
+            .with_context(|| format!("Failed to write ciphertext to: {}", path.display()))?;
     } else {
-        print!("{}", encode(&pem));
+        print!("{}", encoded_pem.as_str());
     }
 
     Ok(())
 }
 
-pub fn decrypt(args: &Decrypt) -> Result<()> {
-    let mut ciphertext = vec![];
+pub fn decrypt<P>(
+    inpath: Option<&Path>,
+    outpath: Option<&Path>,
+    share_paths: &[P],
+    threshold: NonZeroU8,
+) -> Result<()>
+where
+    P: AsRef<Path>,
+{
+    let mut ciphertext = Zeroizing::new(vec![]);
     let secret =
-        recover_secret(&args.shares, args.threshold).context("Failed to recover secret")?;
+        recover_secret_from_paths(share_paths, threshold).context("Failed to recover secret")?;
 
-    if let Some(path) = &args.file_in {
+    if let Some(path) = inpath {
         File::open(path)?.read_to_end(&mut ciphertext)?;
     } else {
         io::stdin().lock().read_until(0x0, &mut ciphertext)?;
     }
 
-    let pem = pem::parse(&ciphertext).context("Failed to parse ciphertext PEM")?;
-    let plaintext = ec_decrypt(&secret, &pem.contents).context("Failed to decrypt message")?;
+    let mut pem = pem::parse(&ciphertext).context("Failed to parse ciphertext PEM")?;
+    let plaintext = Zeroizing::new(
+        ecies::decrypt(secret.as_ref(), &pem.contents).context("Failed to decrypt message")?,
+    );
 
-    if let Some(path) = &args.out {
+    pem.tag.zeroize();
+    pem.contents.zeroize();
+
+    if let Some(path) = outpath {
         fs::write(path, &plaintext)
-            .with_context(|| format!("Failed to write plaintext to {}", path))?;
+            .with_context(|| format!("Failed to write plaintext to {}", path.display()))?;
     } else {
         io::stdout()
             .lock()
